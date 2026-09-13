@@ -1,0 +1,11 @@
+[Unit]
+Description=Check website %i every 10 minutes
+
+[Timer]
+OnCalendar=*-*-* *:0/10:00
+Persistent=true
+AccuracySec=1s
+Unit=watchdog-bot@%i.service
+
+[Install]
+WantedBy=timers.target

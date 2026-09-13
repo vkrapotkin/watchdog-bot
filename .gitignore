@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.env
+config.local.toml
+var/
+*.sqlite3*
+vendor/
+composer.lock
+config.local.json

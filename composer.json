@@ -1,0 +1,19 @@
+{
+    "name": "vkrapotkin/watchdog-bot",
+    "description": "Per-site Laravel watchdog with a standalone PHP runner and Telegram notifications",
+    "type": "library",
+    "license": "proprietary",
+    "keywords": ["laravel", "watchdog", "telegram", "monitoring"],
+    "archive": {"exclude": ["/__pycache__", "/tests/__pycache__", "/.github", "/var", "/config.local.json", "/.env"]},
+    "require": {
+        "php": "^8.2",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "illuminate/support": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/console": "^11.0 || ^12.0 || ^13.0"
+    },
+    "autoload": {"psr-4": {"Vkrapotkin\\WatchdogBot\\": "src/"}},
+    "bin": ["bin/watchdog"],
+    "extra": {"laravel": {"providers": ["Vkrapotkin\\WatchdogBot\\WatchdogServiceProvider"]}},
+    "scripts": {"test": "@php tests/run.php"}
+}

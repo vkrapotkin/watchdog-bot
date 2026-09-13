@@ -1,0 +1,49 @@
+#!/usr/bin/env php
+<?php
+
+// Deliberately do not load the application's vendor/autoload.php or Laravel.
+foreach (['Settings', 'JsonFile', 'Http', 'Monitor'] as $class) {
+    require_once dirname(__DIR__).'/src/'.$class.'.php';
+}
+
+use Vkrapotkin\WatchdogBot\{Settings, JsonFile, Http, Monitor};
+
+ini_set('display_errors', '0');
+ini_set('log_errors', '0');
+set_error_handler(static function (int $severity): never { throw new RuntimeException('Runtime error '.$severity); });
+umask(0077);
+try {
+    $options = getopt('', ['config:', 'check', 'test-message', 'help']);
+    if (isset($options['help'])) {
+        echo "php vendor/vkrapotkin/watchdog-bot/bin/watchdog --config=/absolute/path/config.json [--check|--test-message]\n";
+        exit(0);
+    }
+    if (!isset($options['config']) || (isset($options['check']) && isset($options['test-message']))) {
+        throw new InvalidArgumentException('Specify --config; choose at most one check/test mode');
+    }
+    $path = realpath($options['config']);
+    if ($path === false) {
+        throw new InvalidArgumentException('Config file not found');
+    }
+    $config = Settings::validate(JsonFile::read($path), !isset($options['check']));
+    if (isset($options['check'])) {
+        [$healthy, $detail] = Http::probe($config);
+        echo json_encode(['healthy' => $healthy, 'detail' => $detail])."\n";
+        exit($healthy ? 0 : 1);
+    }
+    if (isset($options['test-message'])) {
+        $ok = true;
+        foreach ($config['chat_ids'] as $chat) {
+            $ok = Http::send($config, $chat, 'Тест уведомлений: '.$config['name']."\n".gmdate('Y-m-d H:i:s').' UTC') && $ok;
+        }
+        echo $ok ? "Test messages accepted by Telegram\n" : "Some test messages failed\n";
+        exit($ok ? 0 : 2);
+    }
+    $result = (new Monitor($config, dirname($path).'/state'))->run();
+    echo json_encode($result)."\n";
+    exit(($result['pending'] ?? 0) > 0 ? 2 : 0);
+} catch (Throwable $error) {
+    // Never output exception messages/traces: configuration includes secrets.
+    fwrite(STDERR, 'Watchdog failed ('.get_class($error)."). Check config, permissions and PHP extensions.\n");
+    exit(2);
+}
