@@ -24,6 +24,16 @@ final class Settings
             }
         }
         $config['expected_text'] ??= '';
+        $config['telegram_proxy'] = ($config['telegram_proxy'] ?? '') ?: null;
+        if ($config['telegram_proxy'] !== null) {
+            if (!is_string($config['telegram_proxy'])) {
+                throw new InvalidArgumentException('Invalid Telegram proxy');
+            }
+            $proxy = parse_url($config['telegram_proxy']);
+            if (!$proxy || !in_array($proxy['scheme'] ?? '', ['http', 'https', 'socks5', 'socks5h'], true) || empty($proxy['host'])) {
+                throw new InvalidArgumentException('Expected HTTP(S) or SOCKS5 proxy URL');
+            }
+        }
         if (!is_string($config['expected_text'])) {
             throw new InvalidArgumentException('expected_text must be a string');
         }

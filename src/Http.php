@@ -4,7 +4,7 @@ namespace Vkrapotkin\WatchdogBot;
 
 final class Http
 {
-    public static function request(string $url, int $timeout, ?array $payload = null): array
+    public static function request(string $url, int $timeout, ?array $payload = null, ?string $proxy = null): array
     {
         $curl = curl_init($url);
         $body = '';
@@ -15,6 +15,9 @@ final class Http
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
+            // Ignore ambient proxy variables. Only send() may select a proxy.
+            CURLOPT_PROXY => $proxy ?? '',
+            CURLOPT_NOPROXY => $proxy ? '' : '*',
             CURLOPT_USERAGENT => 'WatchdogBot/0.1',
             CURLOPT_WRITEFUNCTION => static function ($curl, string $chunk) use (&$body): int {
                 if (strlen($body) + strlen($chunk) > 1048576) {
@@ -37,9 +40,10 @@ final class Http
         return $result;
     }
 
-    public static function probe(array $config): array
+    public static function probe(array $config, ?callable $transport = null): array
     {
-        return self::evaluate(self::request($config['url'], $config['timeout_seconds']), $config['expected_text']);
+        $transport ??= [self::class, 'request'];
+        return self::evaluate($transport($config['url'], $config['timeout_seconds'], null, null), $config['expected_text']);
     }
 
     public static function evaluate(array $response, string $marker): array
@@ -56,11 +60,12 @@ final class Http
         return [true, 'HTTP 200'];
     }
 
-    public static function send(array $config, string $chat, string $message): bool
+    public static function send(array $config, string $chat, string $message, ?callable $transport = null): bool
     {
-        $response = self::request('https://api.telegram.org/bot'.$config['token'].'/sendMessage', $config['timeout_seconds'], [
+        $transport ??= [self::class, 'request'];
+        $response = $transport('https://api.telegram.org/bot'.$config['token'].'/sendMessage', $config['timeout_seconds'], [
             'chat_id' => $chat, 'text' => $message,
-        ]);
+        ], $config['telegram_proxy'] ?? null);
         return $response['error'] === 0 && $response['status'] === 200 && (json_decode($response['body'], true)['ok'] ?? false) === true;
     }
 }

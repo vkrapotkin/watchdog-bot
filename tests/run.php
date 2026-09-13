@@ -1,8 +1,8 @@
 <?php
-foreach (['Settings', 'JsonFile', 'Http', 'Monitor'] as $class) {
+foreach (['Settings', 'JsonFile', 'Http', 'Monitor', 'HappConfig'] as $class) {
     require_once __DIR__.'/../src/'.$class.'.php';
 }
-use Vkrapotkin\WatchdogBot\{Settings, JsonFile, Http, Monitor};
+use Vkrapotkin\WatchdogBot\{Settings, JsonFile, Http, Monitor, HappConfig};
 function check(bool $condition, string $message): void {
     if (!$condition) { throw new RuntimeException($message); }
 }
@@ -15,6 +15,25 @@ function clean(string $path): void {
 }
 $config = Settings::validate(['id'=>'test', 'name'=>'Test', 'url'=>'https://example.com/', 'token'=>'123:test', 'chat_ids'=>['1','2']]);
 $tests = [];
+$tests['proxy used only for Telegram, no fallback on error'] = static function ($path) use ($config) {
+    $config['telegram_proxy']='socks5h://127.0.0.1:10880';
+    $calls=[];
+    $transport=static function ($url,$timeout,$payload,$proxy) use (&$calls) {
+        $calls[]=[$url,$payload,$proxy];
+        return ['status'=>200,'error'=>$proxy ? 7 : 0,'body'=>'ok'];
+    };
+    check(Http::probe($config,$transport)[0], 'Direct site check succeeds');
+    check(!Http::send($config,'1','test',$transport), 'Proxy failure fails Telegram send');
+    check(count($calls)===2 && $calls[0][2]===null && $calls[1][2]===$config['telegram_proxy'], 'Only Telegram uses proxy; no fallback');
+};
+$tests['Happ import restricts proxy to local Telegram HTTPS'] = static function ($path) {
+    $result=HappConfig::convert(['outbounds'=>[['protocol'=>'vless','settings'=>['vnext'=>[]],'streamSettings'=>['network'=>'tcp','security'=>'reality','sockopt'=>['mark'=>1]]]]]);
+    check($result['inbounds'][0]['listen']==='127.0.0.1','Loopback only');
+    check($result['outbounds'][0]['protocol']==='blackhole','Default deny');
+    check($result['routing']['rules'][0]['domain']===['full:api.telegram.org'],'Telegram only');
+    check($result['routing']['rules'][0]['port']==='443','HTTPS only');
+    check(!isset($result['outbounds'][1]['streamSettings']['sockopt']),'Do not import routing marks');
+};
 $tests['HTTP status, redirects, marker and TLS failure'] = static function ($path) {
     foreach ([[200,0,'ok','ok',true],[500,0,'ok','',false],[302,0,'ok','',false],[200,0,'login','ok',false],[200,60,'ok','',false]] as [$status,$error,$body,$marker,$expected]) {
         check(Http::evaluate(compact('status','error','body'), $marker)[0] === $expected, 'Incorrect probe result');

@@ -1,0 +1,22 @@
+[Unit]
+Description=Local Telegram-only proxy for watchdog
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=watchdog-xray
+Group=watchdog-xray
+ExecStart=/opt/watchdog-xray/xray run -config /etc/watchdog-xray/config.json
+Restart=on-failure
+RestartSec=10
+Environment=GOMEMLIMIT=96MiB
+MemoryMax=160M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

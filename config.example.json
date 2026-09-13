@@ -6,5 +6,6 @@
     "retry_seconds": 30,
     "timeout_seconds": 15,
     "token": "",
+    "telegram_proxy": null,
     "chat_ids": []
 }

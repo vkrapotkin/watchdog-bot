@@ -20,6 +20,7 @@ WATCHDOG_EXPECTED_TEXT=ФТССО
 WATCHDOG_TELEGRAM_BOT_USERNAME=ftsso_monitor_bot
 WATCHDOG_TELEGRAM_BOT_TOKEN=replace_with_private_token
 WATCHDOG_TELEGRAM_CHAT_IDS=123456789,-1001234567890
+WATCHDOG_TELEGRAM_PROXY=
 ```
 
 Username справочный, API использует токен. Получатели — ID чатов строками, разделённые запятой. Секреты не добавляются в Git.
@@ -83,6 +84,36 @@ journalctl -u watchdog-bot@ftsso.service
 Без флагов CLI выполняет один цикл. Код 0 — цикл обработан (сайт может быть недоступен), 2 — ошибка монитора или недоставленные сообщения. Вывод JSON показывает состояние и размер очереди. `--check` только проверяет URL: 0 — здоров, 1 — сбой, 2 — ошибка настроек; без отправки и изменения состояния.
 
 ## Разработка и выпуск
+
+### VPN только для Telegram (начиная с v0.1.1)
+
+В `.env` сайта задайте `WATCHDOG_TELEGRAM_PROXY=socks5h://127.0.0.1:10880`, затем обновите Laravel config cache (если используется) и выполните `watchdog:configure`. Только `sendMessage` использует этот прокси. Проверка сайта явно выполняется напрямую, даже если в окружении заданы HTTP_PROXY/HTTPS_PROXY/ALL_PROXY. При ошибке прокси скрытого переключения на прямую отправку нет: сообщение остаётся в очереди.
+
+Пример для Xray + VLESS/REALITY из экспорта Happ:
+
+- Бинарник: `/opt/watchdog-xray/xray` (официальный релиз XTLS/Xray-core, проверяйте SHA-256 архива).
+- Активная закрытая конфигурация: `/etc/watchdog-xray/config.json`, root:watchdog-xray, 0640; каталог 0750.
+- Служба: `/etc/systemd/system/watchdog-xray.service`; шаблон находится в `deploy/` пакета. Требуется отдельный системный пользователь watchdog-xray без shell и домашнего каталога.
+- SOCKS слушает только `127.0.0.1:10880`; импортёр разрешает только TCP к `api.telegram.org:443`. Остальные назначения блокируются. Системные маршруты, SSH, nginx и глобальные proxy-переменные не меняются.
+
+Экспорт Happ содержит секреты. Храните его вне public/Git, например `/root/happ-export.json` с правами 0600. Подготовьте **новый** файл, выбрав номер подходящего TCP/REALITY-узла (нумерация с нуля):
+
+```sh
+cd /var/www/ftsso
+php vendor/vkrapotkin/watchdog-bot/bin/import-happ --source=/root/happ-export.json --output=/etc/watchdog-xray/config.next.json --node-index=0
+/opt/watchdog-xray/xray run -test -config /etc/watchdog-xray/config.next.json
+chown root:watchdog-xray /etc/watchdog-xray/config.next.json
+chmod 0640 /etc/watchdog-xray/config.next.json
+# Перед заменой сохраните текущий config.json в уникальный закрытый backup-файл.
+mv /etc/watchdog-xray/config.next.json /etc/watchdog-xray/config.json
+systemctl restart watchdog-xray
+curl --proxy socks5h://127.0.0.1:10880 --connect-timeout 10 --max-time 20 -I https://api.telegram.org
+sudo -u www-data php vendor/vkrapotkin/watchdog-bot/bin/watchdog --config=/var/www/ftsso/storage/app/watchdog/config.json --test-message
+```
+
+Если проверка неудачна, верните сохранённый config.json и перезапустите только watchdog-xray. Для просмотра используйте `sudoedit /etc/watchdog-xray/config.json` (файл содержит ключи, не публикуйте вывод). Статус: `systemctl status watchdog-xray`, `journalctl -u watchdog-xray`. Xray access/error-логи в этом шаблоне отключены, чтобы не сохранять адреса и данные подключения; системный журнал показывает жизненный цикл службы.
+
+**Подписка и обновление серверов:** экспорт Happ — статический снимок. Интервал обновления подписки в Happ не обновляет этот файл на сервере и не доказывает, что ключи меняются каждый час. В этой версии импорт вручную, автоматического загрузчика подписки нет. Для почасового обновления нужна отдельная ссылка подписки и её формат; её следует хранить как секрет, валидировать новый конфиг до применения и сохранять последний рабочий вариант при сбое загрузки. До настройки такого обновления повторяйте экспорт/импорт, если VPN-провайдер меняет сервер или ключи.
 
 ### Проверено при внедрении в FTSSO (13 сентября 2026)
 

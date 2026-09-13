@@ -1,0 +1,20 @@
+#!/usr/bin/env php
+<?php
+require_once dirname(__DIR__).'/src/JsonFile.php';
+require_once dirname(__DIR__).'/src/HappConfig.php';
+use Vkrapotkin\WatchdogBot\{JsonFile, HappConfig};
+ini_set('display_errors', '0');
+ini_set('log_errors', '0');
+umask(0077);
+try {
+    $options = getopt('', ['source:', 'output:', 'node-index:']);
+    if (!isset($options['source'], $options['output']) || file_exists($options['output'])) {
+        throw new InvalidArgumentException('Specify source and a new output filename');
+    }
+    $config = HappConfig::convert(JsonFile::read($options['source']), (int) ($options['node-index'] ?? 0));
+    JsonFile::write($options['output'], $config);
+    echo "Private candidate config written; validate with Xray before activation.\n";
+} catch (Throwable $error) {
+    fwrite(STDERR, 'Import failed ('.get_class($error)."). Check input, index and output permissions.\n");
+    exit(2);
+}
